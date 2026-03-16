@@ -51,10 +51,17 @@ with col1:
         # --- Objekterkennung starten ---
         if st.button("🔍 Gegenstände erkennen", type="primary"):
             with st.spinner("Analysiere Bild... Bitte warten."):
+                
+                # ---------- WICHTIGE ÄNDERUNG HIER ----------
+                # Konvertiere RGBA zu RGB, falls nötig
+                if image.mode == 'RGBA':
+                    image = image.convert('RGB')
+                
                 # Temporäre Datei für YOLO
                 with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
                     image.save(tmp.name)
                     tmp_path = tmp.name
+                # ---------- ENDE DER ÄNDERUNG ----------
 
                 # Objekterkennung durchführen
                 results = model(tmp_path)
