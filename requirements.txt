@@ -3,3 +3,5 @@ ultralytics==8.0.196
 streamlit
 pillow
 numpy
+torch
+torchvision
