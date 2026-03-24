@@ -9,10 +9,8 @@ from PIL import Image
 import numpy as np
 
 # Erst jetzt die KI-Library laden
-try:
-    from ultralytics import YOLO
-except ImportError as e:
-    st.error(f"Fehler beim Laden von YOLO: {e}")
+
+from ultralytics import YOLO
 
 st.set_page_config(page_title="Wahlzettel-Prüfer", layout="centered")
 
