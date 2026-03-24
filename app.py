@@ -1,66 +1,63 @@
 import streamlit as st
+from ultralytics import YOLO
 import cv2
 import numpy as np
-from ultralytics import YOLO
 from PIL import Image
+import os
 
-# Seite konfigurieren
-st.set_page_config(page_title="KI Profil-Check", layout="centered")
+# Konfiguration der Seite
+st.set_page_config(page_title="Profilwahl Check", layout="wide")
 
-# Modell laden
+# Lade-Funktion mit Cache, damit das Modell nicht bei jedem Klick neu geladen wird
 @st.cache_resource
-def load_custom_model():
-    # Hier wird dein hochgeladenes Modell verwendet
-    # Stelle sicher, dass die Datei 'yolov8n-2.pt' im selben Ordner auf GitHub liegt
-    return YOLO('yolov8n-2.pt')
+def get_model():
+    model_path = 'yolov8n-2.pt'
+    if not os.path.exists(model_path):
+        st.error(f"Datei {model_path} nicht gefunden! Bitte ins GitHub-Repo hochladen.")
+        return None
+    return YOLO(model_path)
 
-try:
-    model = load_custom_model()
-    st.success("KI-Modell 'yolov8n-2.pt' erfolgreich geladen!")
-except Exception as e:
-    st.error(f"Fehler beim Laden des Modells: {e}")
-    st.info("Checke, ob die Datei 'yolov8n-2.pt' im Hauptverzeichnis deines GitHub-Repos liegt.")
+st.title("🚀 KI-Profilwahl Assistent")
+st.info("Lade deinen Wahlzettel hoch. Die KI erkennt die Kreuze und prüft die Belegung.")
 
-st.title("📝 Wahlzettel-Scanner")
-st.write("Lade ein Foto deines ausgefüllten Wahlzettels hoch.")
+# Modell initialisieren
+model = get_model()
 
-# File Uploader
-uploaded_file = st.file_uploader("Bild hochladen...", type=["jpg", "jpeg", "png"])
+# Datei Upload
+file = st.file_uploader("Wahlzettel Bild (JPG/PNG)", type=['jpg', 'jpeg', 'png'])
 
-if uploaded_file is not None:
-    # Bild vorbereiten
-    image = Image.open(uploaded_file)
-    img_array = np.array(image.convert("RGB")) # Sicherstellen, dass es RGB ist
+if file and model:
+    # 1. Bild einlesen und standardisieren
+    pil_image = Image.open(file).convert("RGB")
+    img_array = np.array(pil_image)
     
-    # Button zum Starten der Analyse
-    if st.button("Wahlzettel analysieren"):
-        with st.spinner('KI analysiert das Dokument...'):
-            # Inferenz durchführen
-            results = model(img_array)
-            
-            # Ergebnisse anzeigen
-            st.subheader("Analyse-Ergebnis")
-            
-            # Gezeichnetes Bild generieren
-            res_plotted = results[0].plot() 
-            st.image(res_plotted, caption="Erkannte Bereiche", use_container_width=True)
-            
-            # Details zu den Boxen
-            boxes = results[0].boxes
-            st.write(f"Anzahl erkannter Markierungen: **{len(boxes)}**")
-            
-            if len(boxes) > 0:
-                st.write("### Einzelansicht der Kästchen:")
-                cols = st.columns(4) # Erstellt 4 Spalten für kleine Vorschauen
-                
-                for i, box in enumerate(boxes):
-                    # Koordinaten extrahieren
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    
-                    # Ausschnitt erstellen (Crop)
-                    crop = img_array[y1:y2, x1:x2]
-                    
-                    # In der passenden Spalte anzeigen
-                    cols[i % 4].image(crop, caption=f"Box {i+1}")
-            else:
-                st.warning("Keine Markierungen gefunden. Versuche es mit einem schärferen Bild.")
+    # 2. KI Vorhersage
+    # confidence=0.25 (Standard), kannst du anpassen falls er zu wenig erkennt
+    results = model.predict(img_array, conf=0.25)
+    
+    # 3. Layout für Ergebnisse
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        st.subheader("Scan-Ergebnis")
+        # Das Ergebnis-Bild von YOLO zeichnen lassen
+        res_plotted = results[0].plot(line_width=2)
+        st.image(res_plotted, caption="Erkannte Markierungen", use_container_width=True)
+        
+    with col2:
+        st.subheader("Daten-Analyse")
+        boxes = results[0].boxes
+        st.metric("Erkannte Kreuze", len(boxes))
+        
+        if len(boxes) > 0:
+            st.success("Kreuze wurden erfolgreich lokalisiert.")
+            # Hier kannst du später die Logik einbauen:
+            # z.B. "Wenn Box-X Koordinate in Bereich Y liegt -> Fach ist Biologie"
+        else:
+            st.warning("Keine Markierungen gefunden. Ist das Bild hell genug?")
+
+    # Optional: Debug-Ansicht der Koordinaten
+    with st.expander("Technische Details (Koordinaten)"):
+        for i, box in enumerate(boxes):
+            coords = box.xyxy[0].tolist()
+            st.write(f"Box {i+1}: {coords}")
