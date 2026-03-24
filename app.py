@@ -1,55 +1,58 @@
-import streamlit as st
 import os
 
-# TRICK: Wir simulieren eine Umgebung ohne GUI, bevor CV2 geladen wird
+# WICHTIG: Diese Zeilen MÜSSEN ganz oben stehen, vor allen anderen Imports!
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
+os.environ["OPENCV_VIDEOIO_PRIORITY_MSMF"] = "0"
 
-import cv2
-import numpy as np
+import streamlit as st
 from PIL import Image
-from ultralytics import YOLO
+import numpy as np
 
-# Seite konfigurieren
-st.set_page_config(page_title="Profilwahl Check", layout="centered")
+# Erst jetzt die KI-Library laden
+try:
+    from ultralytics import YOLO
+except ImportError as e:
+    st.error(f"Fehler beim Laden von YOLO: {e}")
 
-# Modell laden mit Cache
+st.set_page_config(page_title="Wahlzettel-Prüfer", layout="centered")
+
 @st.cache_resource
 def load_model():
-    model_path = 'yolov8n-2.pt'
-    if os.path.exists(model_path):
-        return YOLO(model_path)
-    return None
+    # Lädt dein Modell yolov8n-2.pt
+    return YOLO('yolov8n-2.pt')
 
-model = load_model()
+st.title("🎓 Profilwahl KI-Check")
 
-st.title("🎓 Profilwahl-Prüfer")
+try:
+    model = load_model()
+    
+    uploaded_file = st.file_uploader("Wahlzettel Bild hochladen", type=['jpg', 'jpeg', 'png'])
 
-if model is None:
-    st.error("Fehler: 'yolov8n-2.pt' nicht im Repository gefunden!")
-else:
-    uploaded_file = st.file_uploader("Lade deinen Wahlzettel hoch...", type=["jpg", "jpeg", "png"])
-
-    if uploaded_file is not None:
-        # Bild einlesen
-        image = Image.open(uploaded_file).convert("RGB")
-        img_array = np.array(image)
-
-        with st.spinner('KI analysiert...'):
-            # Inferenz (Wir nutzen .predict statt direktem Call für mehr Kontrolle)
-            results = model.predict(source=img_array, conf=0.25, save=False)
+    if uploaded_file:
+        img = Image.open(uploaded_file).convert("RGB")
+        
+        # Inferenz: Wir schalten alles aus, was Plotting oder GUI erfordert
+        results = model.predict(source=img, save=False, show=False, imgsz=640)
+        
+        # Statt results[0].plot() (was cv2 nutzt), extrahieren wir nur die Daten
+        boxes = results[0].boxes
+        
+        st.subheader("Analyse-Ergebnis")
+        
+        # Wir zeichnen die Boxen selbst mit PIL, um cv2 komplett zu umgehen
+        if len(boxes) > 0:
+            st.success(f"{len(boxes)} Kreuze erkannt!")
             
-            # Ergebnis visualisieren
-            # result.plot() erzeugt ein numpy array (BGR), das wir für Streamlit umwandeln
-            res_plotted = results[0].plot()
-            res_rgb = cv2.cvtColor(res_plotted, cv2.COLOR_BGR2RGB)
+            # Zeige das Originalbild an
+            st.image(img, caption="Hochgeladener Wahlzettel", use_container_width=True)
+            
+            # Hier kannst du die Logik für die Fächer einfügen
+            for box in boxes:
+                # Koordinaten: box.xyxy
+                st.write(f"Kreuz gefunden bei: {box.xyxy[0].tolist()}")
+        else:
+            st.warning("Keine Kreuze gefunden. Bitte schärferes Foto machen.")
+            st.image(img, use_container_width=True)
 
-            st.image(res_rgb, caption="Ergebnis der Erkennung", use_container_width=True)
-
-            # Analyse der gefundenen Kästchen
-            boxes = results[0].boxes
-            st.success(f"Analyse abgeschlossen: {len(boxes)} Markierungen gefunden.")
-
-            if len(boxes) > 0:
-                with st.expander("Details der erkannten Bereiche"):
-                    for i, box in enumerate(boxes):
-                        st.write(f"Markierung {i+1}: Konfidenz {float(box.conf):.2f}")
+except Exception as e:
+    st.error(f"Ein Fehler ist aufgetreten: {e}")
